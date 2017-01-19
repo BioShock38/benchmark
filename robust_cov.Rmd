@@ -1,0 +1,73 @@
+---
+title: "Robust location and scatter"
+output: html_document
+---
+
+```{r, include = FALSE, echo = FALSE}
+library(pcadapt)
+library(Rcpp)
+library(robust)
+library(ggplot2)
+```
+
+```{r}
+sourceCpp("ogk.cpp")
+source("robust_cov.R")
+dt <- as.matrix(read.table(system.file("extdata", "geno3pops.pcadapt", package = "pcadapt")))
+x <- pcadapt(dt, K = 2)
+gt <- 1:150
+xmat <- x$zscores
+confidence <- 0.65
+```
+
+
+```{r}
+#Outlier-free
+obj.true <- NULL
+obj.true$cov <- cov(xmat[-gt, ])
+obj.true$center <- apply(xmat[-gt, ], MARGIN = 2, FUN = function(h){mean(h, na.rm = TRUE)})
+
+#ogk_cpp
+ogk <- covRob_cpp(xmat)
+
+#ogk_R
+my.ogk <- ogk_R(xmat)
+
+#MCD
+mcd <- robust::covRob(xmat, estim = "mcd")
+```
+
+```{r}
+df.data <- create.coord.df(xmat[-gt, ], "neutral")
+df.out <- create.coord.df(xmat[gt, ], "outlier")
+df.1 <- create.coord.df(obj.true, "Outlier-free")
+df.2 <- create.coord.df(ogk, "OGK")
+df.3 <- create.coord.df(my.ogk, "OGK (one iteration)")
+df.4 <- create.coord.df(my.ogk, "MCD")
+df <- rbind(df.data, df.out, df.1, df.2, df.3, df.4)
+colnames(df) <- c("Method", "x.coord", "y.coord")
+df[, 1] <- as.character(df[, 1])
+df[, 2] <- as.numeric(as.character(df[, 2]))
+df[, 3] <- as.numeric(as.character(df[, 3]))
+df$Method <- factor(df$Method, levels = unique(df$Method))
+```
+
+```{r, fig.width = 7, fig.height = 5, fig.align = 'center'}
+p0 <- ggplot(data = df, aes(x = x.coord, y = y.coord)) + 
+  geom_point(aes(color = Method), size = 1, na.rm = TRUE) +
+  scale_color_manual(values = c("steelblue3", "firebrick3", "lightcoral", "darkolivegreen3", "aquamarine3", "hotpink4")) +  
+  theme_bw() +
+  labs(title = paste0("Confidence: ", 100 * confidence, "%")) +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15, face = "bold"),
+        title = element_text(size = 15, face = "bold"),
+        legend.text = element_text(size = 15),
+        legend.key.height = unit(1, "line"),
+        legend.key.width = unit(3, "line")
+  )
+print(p0)
+```
+
+# Reference
+
+Hubert, M., Rousseeuw, P. J., & Verdonck, T. (2012). [A deterministic algorithm for robust location and scatter. Journal of Computational and Graphical Statistics, 21(3), 618-637.](http://amstat.tandfonline.com/doi/abs/10.1080/10618600.2012.672100).
